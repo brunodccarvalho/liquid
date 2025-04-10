@@ -73,15 +73,15 @@ class CommentTagUnitTest < Minitest::Test
   end
 
   def test_child_comment_tags_need_to_be_closed
-    assert_template_result("", <<~LIQUID.chomp)
-      {% comment %}
-        {% comment %}
-          {% comment %}{%    endcomment     %}
-        {% endcomment %}
-      {% endcomment %}
-    LIQUID
-
     assert_raises(Liquid::SyntaxError) do
+      assert_template_result("", <<~LIQUID.chomp)
+        {% comment %}
+          {% comment %}
+            {% comment %}{%    endcomment     %}
+          {% endcomment %}
+        {% endcomment %}
+      LIQUID
+
       assert_template_result("", <<~LIQUID.chomp)
         {% comment %}
           {% comment %}

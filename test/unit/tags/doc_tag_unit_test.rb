@@ -88,13 +88,15 @@ class DocTagUnitTest < Minitest::Test
   end
 
   def test_doc_tag_ignores_nested_raw_tags
-    template = <<~LIQUID.chomp
-      {% doc %}
-        {% raw %}
-      {% enddoc %}
-    LIQUID
+    assert_raises(Liquid::SyntaxError) do
+      template = <<~LIQUID.chomp
+        {% doc %}
+          {% raw %}
+        {% enddoc %}
+      LIQUID
 
-    assert_template_result('', template)
+      assert_template_result('', template)
+    end
   end
 
   def test_doc_tag_ignores_unclosed_assign

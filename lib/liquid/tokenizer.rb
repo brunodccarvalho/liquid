@@ -6,13 +6,18 @@ module Liquid
   class Tokenizer
     attr_reader :line_number, :for_liquid_tag
 
-    TAG_END = /%\}/
     TAG_OR_VARIABLE_START = /\{[\{\%]/
-    NEWLINE = /\n/
+    VARIABLE_CHARACTER_STOPS = /[\\"'\}\{]/
+
+    RAW_TAG_LEADING = %r{\A-?\s*raw\b}m
+    ENDRAW_TAG_LEADING = /\A-?\s*endraw\b/m
 
     OPEN_CURLEY = "{".ord
     CLOSE_CURLEY = "}".ord
     PERCENTAGE = "%".ord
+    DOUBLE_QUOTE = '"'.ord
+    SINGLE_QUOTE = "'".ord
+    ESCAPE = "\\".ord
 
     def initialize(
       source:,
@@ -54,45 +59,38 @@ module Liquid
       if @for_liquid_tag
         @tokens = @source.split("\n")
       else
-        @tokens << shift_normal until @ss.eos?
+        scan_top_level_tokens until @ss.eos?
       end
 
       @source = nil
       @ss = nil
     end
 
-    def shift_normal
-      token = next_token
-
-      return unless token
-
-      token
-    end
-
-    def next_token
-      # possible states: :text, :tag, :variable
-      byte_a = @ss.peek_byte
-
-      if byte_a == OPEN_CURLEY
+    def scan_top_level_tokens
+      if @ss.peek_byte == OPEN_CURLEY
         @ss.scan_byte
 
         byte_b = @ss.peek_byte
 
         if byte_b == PERCENTAGE
           @ss.scan_byte
-          return next_tag_token
+          @raw_tag = check_raw_tag_leading?
+          @tokens << scan_tag_token
+          scan_raw_content_and_endraw_token if @raw_tag
+          return
         elsif byte_b == OPEN_CURLEY
           @ss.scan_byte
-          return next_variable_token
+          @tokens << scan_variable_token
+          return
         end
 
         @ss.pos -= 1
       end
 
-      next_text_token
+      @tokens << scan_text_token
     end
 
-    def next_text_token
+    def scan_text_token
       start = @ss.pos
 
       unless @ss.skip_until(TAG_OR_VARIABLE_START)
@@ -111,51 +109,81 @@ module Liquid
       end
     end
 
-    def next_variable_token
+    def scan_variable_token
       start = @ss.pos - 2
+      string_quote = nil
 
-      byte_a = byte_b = @ss.scan_byte
-
-      while byte_b
-        byte_a = @ss.scan_byte while byte_a && (byte_a != CLOSE_CURLEY && byte_a != OPEN_CURLEY)
-
-        break unless byte_a
-
-        if @ss.eos?
-          return byte_a == CLOSE_CURLEY ? @source.byteslice(start, @ss.pos - start) : "{{"
-        end
-
-        byte_b = @ss.scan_byte
-
-        if byte_a == CLOSE_CURLEY
-          if byte_b == CLOSE_CURLEY
-            return @source.byteslice(start, @ss.pos - start)
-          elsif byte_b != CLOSE_CURLEY
-            @ss.pos -= 1
+      until @ss.eos?
+        case skip_to_byte(VARIABLE_CHARACTER_STOPS)
+        when ESCAPE
+          @ss.pos += 1 if string_quote
+        when DOUBLE_QUOTE
+          if string_quote == DOUBLE_QUOTE
+            string_quote = nil
+          elsif !string_quote
+            string_quote = DOUBLE_QUOTE
+          end
+        when SINGLE_QUOTE
+          if string_quote == SINGLE_QUOTE
+            string_quote = nil
+          elsif !string_quote
+            string_quote = SINGLE_QUOTE
+          end
+        when CLOSE_CURLEY
+          if !string_quote && @ss.peek_byte == CLOSE_CURLEY
+            @ss.pos += 1
             return @source.byteslice(start, @ss.pos - start)
           end
-        elsif byte_a == OPEN_CURLEY && byte_b == PERCENTAGE
-          return next_tag_token_with_start(start)
+        when OPEN_CURLEY
+          if !string_quote && @ss.peek_byte == PERCENTAGE
+            # for backward compatibility. it will not parse properly later.
+            @ss.pos += 1
+            return scan_tag_token(start)
+          end
+        else
+          @ss.terminate
+          break
         end
-
-        byte_a = byte_b
       end
 
       "{{"
     end
 
-    def next_tag_token
-      start = @ss.pos - 2
-      if (len = @ss.skip_until(TAG_END))
-        @source.byteslice(start, len + 2)
-      else
-        "{%"
+    def scan_tag_token(start = nil)
+      start ||= @ss.pos - 2
+
+      if (len = @ss.skip_until("%}"))
+        return @source.byteslice(start, len + 2)
+      end
+
+      "{%"
+    end
+
+    def scan_raw_content_and_endraw_token
+      @raw_tag = false
+      start = @ss.pos
+
+      while @ss.skip_until("{%")
+        next unless @ss.match?(ENDRAW_TAG_LEADING)
+
+        @tokens << @source.byteslice(start, @ss.pos - 2 - start) if start < @ss.pos - 2
+        @tokens << scan_tag_token
+        return
+      end
+
+      @tokens << @source.byteslice(start)
+      @ss.terminate
+    end
+
+    def skip_to_byte(byte_pattern)
+      if @ss.skip_until(byte_pattern)
+        @ss.pos -= 1
+        @ss.scan_byte
       end
     end
 
-    def next_tag_token_with_start(start)
-      @ss.skip_until(TAG_END)
-      @source.byteslice(start, @ss.pos - start)
+    def check_raw_tag_leading?
+      @ss.match?(RAW_TAG_LEADING)
     end
   end
 end
