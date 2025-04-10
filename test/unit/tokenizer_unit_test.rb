@@ -16,6 +16,28 @@ class TokenizerTest < Minitest::Test
     assert_equal([' ', '{{  funk  }}', ' '], tokenize(' {{  funk  }} '))
   end
 
+  def test_tokenize_close_curleys_allowed
+    assert_equal([%q({{ hi '}' "}" } {{ %{name} }}), "y}}"], tokenize(%q({{ hi '}' "}" } {{ %{name} }}y}})))
+  end
+
+  def test_tokenize_variables_with_strings_do_not_respect_quotes
+    assert_equal([%q({{ a '}}), %q(' }}y)], tokenize(%q({{ a '}}' }}y)))
+    assert_equal([%q({{ a "}}), %q(" }}y)], tokenize(%q({{ a "}}" }}y)))
+    assert_equal([%q({{ a ''}}), %q(' }}y)], tokenize(%q({{ a ''}}' }}y)))
+    assert_equal([%q({{ a ""}}), %q(" }}y)], tokenize(%q({{ a ""}}" }}y)))
+    assert_equal([%q({{ a '\'}}), %q(' }}y)], tokenize(%q({{ a '\'}}' }}y)))
+    assert_equal([%q({{ a "\"}}), %q(" }}y)], tokenize(%q({{ a "\"}}" }}y)))
+  end
+
+  def test_tokenize_tags_with_strings_do_not_respect_quotes
+    assert_equal([%q({% a '%}), %q(' %}y)], tokenize(%q({% a '%}' %}y)))
+    assert_equal([%q({% a "%}), %q(" %}y)], tokenize(%q({% a "%}" %}y)))
+    assert_equal([%q({% a ''%}), %q(' %}y)], tokenize(%q({% a ''%}' %}y)))
+    assert_equal([%q({% a ""%}), %q(" %}y)], tokenize(%q({% a ""%}" %}y)))
+    assert_equal([%q({% a '\'%}), %q(' %}y)], tokenize(%q({% a '\'%}' %}y)))
+    assert_equal([%q({% a "\"%}), %q(" %}y)], tokenize(%q({% a "\"%}" %}y)))
+  end
+
   def test_tokenize_blocks
     assert_equal(['{%comment%}'], tokenize('{%comment%}'))
     assert_equal([' ', '{%comment%}', ' '], tokenize(' {%comment%} '))
@@ -36,13 +58,12 @@ class TokenizerTest < Minitest::Test
   end
 
   def test_incomplete_curly_braces
-    assert_equal(["{{.}", " "], tokenize('{{.} '))
-    assert_equal(["{{}", "%}"], tokenize('{{}%}'))
+    assert_equal(["{{}%}"], tokenize('{{}%}'))
+    assert_equal(["x", "{{"], tokenize('x{{.} '))
     assert_equal(["{{}}", "}"], tokenize('{{}}}'))
   end
 
   def test_unmatching_start_and_end
-    assert_equal(["{{%}"], tokenize('{{%}'))
     assert_equal(["{{%%%}}"], tokenize('{{%%%}}'))
     assert_equal(["{%", "}}"], tokenize('{%}}'))
     assert_equal(["{%%}", "}"], tokenize('{%%}}'))
