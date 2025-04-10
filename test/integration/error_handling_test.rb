@@ -164,25 +164,35 @@ class ErrorHandlingTest < Minitest::Test
     err = assert_raises(SyntaxError) do
       Liquid::Template.parse('{{%%%}}', error_mode: :strict)
     end
-    assert_equal('Liquid syntax error: Unexpected character % in "{{%%%}}"', err.message)
+    assert_equal("Liquid syntax error: Variable '{{%%%}' was not properly terminated with regexp: /\\}\\}/", err.message)
   end
 
   def test_warnings
-    template = Liquid::Template.parse('{% if ~~~ %}{{%%%}}{% else %}{{ hello. }}{% endif %}', error_mode: :warn)
+    template = Liquid::Template.parse('{% if ~~~ %}{{a%a}}{% else %}{{ hello. }}{% endif %}', error_mode: :warn)
     assert_equal(3, template.warnings.size)
     assert_equal('Unexpected character ~ in "~~~"', template.warnings[0].to_s(false))
-    assert_equal('Unexpected character % in "{{%%%}}"', template.warnings[1].to_s(false))
+    assert_equal('Unexpected character % in "{{a%a}}"', template.warnings[1].to_s(false))
     assert_equal('Expected id but found end_of_string in "{{ hello. }}"', template.warnings[2].to_s(false))
     assert_equal('', template.render)
+
+    err = assert_raises(SyntaxError) do
+      Liquid::Template.parse('{% if ~~~ %}{{%%%}}{% else %}{{ hello. }}{% endif %}', error_mode: :warn)
+    end
+    assert_equal("Liquid syntax error: Variable '{{%%%}' was not properly terminated with regexp: /\\}\\}/", err.message)
   end
 
   def test_warning_line_numbers
-    template = Liquid::Template.parse("{% if ~~~ %}\n{{%%%}}{% else %}\n{{ hello. }}{% endif %}", error_mode: :warn, line_numbers: true)
+    template = Liquid::Template.parse("{% if ~~~ %}\n{{a%a}}{% else %}\n{{ hello. }}{% endif %}", error_mode: :warn, line_numbers: true)
     assert_equal('Liquid syntax error (line 1): Unexpected character ~ in "~~~"', template.warnings[0].message)
-    assert_equal('Liquid syntax error (line 2): Unexpected character % in "{{%%%}}"', template.warnings[1].message)
+    assert_equal('Liquid syntax error (line 2): Unexpected character % in "{{a%a}}"', template.warnings[1].message)
     assert_equal('Liquid syntax error (line 3): Expected id but found end_of_string in "{{ hello. }}"', template.warnings[2].message)
     assert_equal(3, template.warnings.size)
     assert_equal([1, 2, 3], template.warnings.map(&:line_number))
+
+    err = assert_raises(SyntaxError) do
+      Liquid::Template.parse("{% if ~~~ %}\n{{%%%}}{% else %}\n{{ hello. }}{% endif %}", error_mode: :warn, line_numbers: true)
+    end
+    assert_equal("Liquid syntax error (line 2): Variable '{{%%%}' was not properly terminated with regexp: /\\}\\}/", err.message)
   end
 
   # Liquid should not catch Exceptions that are not subclasses of StandardError, like Interrupt and NoMemoryError

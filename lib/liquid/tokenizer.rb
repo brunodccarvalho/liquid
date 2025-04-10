@@ -114,6 +114,7 @@ module Liquid
     def next_variable_token
       start = @ss.pos - 2
 
+      @ss.pos -= 1
       byte_a = byte_b = @ss.scan_byte
 
       while byte_b
@@ -127,13 +128,8 @@ module Liquid
 
         byte_b = @ss.scan_byte
 
-        if byte_a == CLOSE_CURLEY
-          if byte_b == CLOSE_CURLEY
-            return @source.byteslice(start, @ss.pos - start)
-          elsif byte_b != CLOSE_CURLEY
-            @ss.pos -= 1
-            return @source.byteslice(start, @ss.pos - start)
-          end
+        if byte_a == CLOSE_CURLEY && byte_b == CLOSE_CURLEY
+          return @source.byteslice(start, @ss.pos - start)
         elsif byte_a == OPEN_CURLEY && byte_b == PERCENTAGE
           return next_tag_token_with_start(start)
         end
